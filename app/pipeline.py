@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import TypedDict
 
 from langgraph.graph import StateGraph, END
@@ -16,13 +17,14 @@ from app.agents.intake import parse_intake
 from app.agents.demand import run_demand_signal
 from app.agents.competitor import run_competitor_discovery
 from app.agents.market_sizing import run_market_sizing
-from app.agents.scoring import compute_viability, evaluation_to_viability
+from app.agents.scoring import evaluation_to_viability
 from app.agents.risks import derive_risks
 from app.agents.aggregator import aggregate
 from app.agents.validator import validate_report
 from app.agents.evaluator import evaluate
 from app.agents.plan_writer import draft_business_plan
 from app.renderer import render_to_markdown
+from caching.cache import load_cached, save_cache
 
 
 class PipelineState(TypedDict):
@@ -131,6 +133,11 @@ def build_pipeline() -> StateGraph:
 
 
 async def run_pipeline(raw_idea: str) -> PipelineState:
+    cached = load_cached(raw_idea)
+    if cached:
+        report_data = cached.get("report")
+        if report_data:
+            return _state_from_cache(cached)
     graph = build_pipeline()
     initial = PipelineState(
         raw_idea=raw_idea,
@@ -147,4 +154,36 @@ async def run_pipeline(raw_idea: str) -> PipelineState:
         unresolved_claims_stripped=0,
         error=None,
     )
-    return await graph.ainvoke(initial)
+    result = await graph.ainvoke(initial)
+    save_cache(raw_idea, _state_to_cache(result))
+    return result
+
+
+def _state_to_cache(state: PipelineState) -> dict:
+    return {
+        "raw_idea": state["raw_idea"],
+        "markdown": state.get("markdown"),
+        "unresolved_claims_stripped": state.get("unresolved_claims_stripped", 0),
+        "error": state.get("error"),
+        "report": state["report"].model_dump(mode="json") if state.get("report") else None,
+    }
+
+
+def _state_from_cache(cached: dict) -> PipelineState:
+    report_data = cached.get("report")
+    report = ValidationReport(**report_data) if report_data else None
+    return PipelineState(
+        raw_idea=cached["raw_idea"],
+        intake=report.intake if report else None,
+        demand=report.demand if report else None,
+        competitors=report.competitors if report else None,
+        market_sizing=report.market_sizing if report else None,
+        risks=report.risks if report else None,
+        viability=report.viability if report else None,
+        evaluation=report.evaluation if report else None,
+        business_plan_draft=report.business_plan_draft if report else None,
+        report=report,
+        markdown=cached.get("markdown"),
+        unresolved_claims_stripped=cached.get("unresolved_claims_stripped", 0),
+        error=cached.get("error"),
+    )

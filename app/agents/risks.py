@@ -16,6 +16,8 @@ def derive_risks(
     market_sizing: MarketSizing,
 ) -> list[str]:
     risks = []
+    cat = (intake.category or "").lower()
+    cat = _CATEGORY_ALIASES.get(cat, cat)
 
     if demand.strength == "weak":
         risks.append(
@@ -55,9 +57,6 @@ def derive_risks(
             "Market size confidence is low — limited public data available; "
             "primary research recommended to size the opportunity"
         )
-
-    cat = (intake.category or "").lower()
-    cat = _CATEGORY_ALIASES.get(cat, cat)
 
     regulatory_categories = {
         "fintech", "healthtech", "medtech", "biotech", "crypto",

@@ -207,7 +207,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 
 ### Phase 5 — Evidence Aggregator + Validator/QA Agent (2 days)
 - Build the aggregator that merges outputs from Phases 2–4 into one evidence set
-- Build the Validator: walks every claim in the aggregated evidence, confirms a `source_url` is present and resolves (basic URL check), strips anything that fails
+- Build the Validator: walks every claim in the aggregated evidence, confirms a `source_url` is present and well-formed (syntactic URL check), strips anything that fails
 - Track and expose `unresolved_claims_stripped` count
 
 **Deliverable:** a hardened evidence set — nothing enters the next phase without a source

@@ -26,7 +26,7 @@ TIER_2 = {  # Quality journalism / institutional
     "gartner.com", "forrester.com", "idc.com",
 }
 
-TIER_3 = {  Company pages / credible blogs
+TIER_3 = {  # Company pages / credible blogs
     "github.com", "gitlab.com", "medium.com",
     "substack.com", "producthunt.com",
 }
