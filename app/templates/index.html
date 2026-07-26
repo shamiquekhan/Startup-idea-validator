@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Startup Validator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f5; color: #1a1a1a; line-height: 1.6; padding: 2rem;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+  .subtitle { color: #666; margin-bottom: 1.5rem; }
+  textarea {
+    width: 100%; min-height: 120px; padding: 1rem; font-size: 1rem;
+    border: 2px solid #ddd; border-radius: 8px; resize: vertical;
+    font-family: inherit;
+  }
+  textarea:focus { outline: none; border-color: #2563eb; }
+  button {
+    background: #2563eb; color: #fff; border: none; padding: 0.75rem 2rem;
+    font-size: 1rem; border-radius: 8px; cursor: pointer; margin-top: 0.75rem;
+    font-weight: 600;
+  }
+  button:hover { background: #1d4ed8; }
+  button:disabled { background: #93c5fd; cursor: not-allowed; }
+  .loading {
+    display: none; align-items: center; gap: 0.75rem; margin: 1.5rem 0;
+    padding: 1rem; background: #eef2ff; border-radius: 8px;
+  }
+  .loading.show { display: flex; }
+  .spinner {
+    width: 24px; height: 24px; border: 3px solid #bfdbfe;
+    border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .report {
+    display: none; margin-top: 1.5rem; background: #fff; padding: 2rem;
+    border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .report.show { display: block; }
+  .report h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  .report h2 { font-size: 1.2rem; margin-top: 1.5rem; margin-bottom: 0.5rem; border-bottom: 2px solid #eee; padding-bottom: 0.25rem; }
+  .report h3 { font-size: 1.05rem; margin-top: 1rem; }
+  .report p { margin: 0.5rem 0; }
+  .report ul { margin: 0.5rem 0 0.5rem 1.5rem; }
+  .report a { color: #2563eb; }
+  .report table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; }
+  .report th, .report td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
+  .report th { background: #f9fafb; }
+  .score-badge {
+    display: inline-block; font-size: 2.5rem; font-weight: 700; padding: 0.5rem 1.5rem;
+    border-radius: 12px; margin: 1rem 0;
+  }
+  .score-high { background: #dcfce7; color: #166534; }
+  .score-medium { background: #fef9c3; color: #854d0e; }
+  .score-low { background: #fee2e2; color: #991b1b; }
+  .verdict-badge {
+    display: inline-block; font-size: 1rem; font-weight: 600; padding: 0.4rem 1rem;
+    border-radius: 20px; margin: 0.5rem 0;
+  }
+  .verdict-build { background: #dcfce7; color: #166534; }
+  .verdict-narrow { background: #fef9c3; color: #854d0e; }
+  .verdict-pivot { background: #ffedd5; color: #9a3412; }
+  .verdict-abandon { background: #fee2e2; color: #991b1b; }
+  .verdict-insufficient-info { background: #f3f4f6; color: #4b5563; }
+  .reasoning-box { background: #f9fafb; padding: 1rem; border-radius: 8px; margin: 0.75rem 0; border-left: 4px solid #2563eb; }
+  .kill-box { background: #fef2f2; padding: 1rem; border-radius: 8px; margin: 0.75rem 0; border-left: 4px solid #dc2626; }
+  .steps-box { background: #f0fdf4; padding: 1rem; border-radius: 8px; margin: 0.75rem 0; border-left: 4px solid #16a34a; }
+  .input-note { background: #fef9c3; padding: 0.75rem; border-radius: 6px; font-size: 0.9rem; margin: 0.5rem 0; }
+  .error { color: #dc2626; margin: 0.5rem 0; }
+  .new-btn { background: #6b7280; }
+  .new-btn:hover { background: #4b5563; }
+  .stripped-note {
+    margin-top: 1rem; padding: 0.75rem; background: #fef3c7; border-radius: 6px; font-size: 0.9rem;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Startup Validation Agent</h1>
+  <p class="subtitle">Paste a startup idea and get a structured, source-cited evaluation across 8 dimensions — with a clear verdict and kill criteria.</p>
+
+  <textarea id="idea-input" placeholder="Describe your startup idea in detail. The more specific you are about customer, problem, and solution, the better the evaluation.&#10;&#10;Example: Small businesses waste hours manually tracking expenses across multiple bank accounts. I want to build an expense tracker that auto-categorizes transactions and generates reports. Target: freelancers and micro-businesses."></textarea>
+  <br>
+  <button id="submit-btn" onclick="validate()">Validate Idea</button>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <span>Running research pipeline (30–90 seconds)...</span>
+  </div>
+
+  <div class="report" id="report"></div>
+  <div class="error" id="error"></div>
+</div>
+
+<script>
+async function validate() {
+  const input = document.getElementById('idea-input');
+  const btn = document.getElementById('submit-btn');
+  const loading = document.getElementById('loading');
+  const report = document.getElementById('report');
+  const err = document.getElementById('error');
+
+  const idea = input.value.trim();
+  if (!idea) { err.textContent = 'Please enter a startup idea.'; return; }
+  err.textContent = '';
+  report.classList.remove('show');
+  report.innerHTML = '';
+  btn.disabled = true;
+  loading.classList.add('show');
+
+  try {
+    const res = await fetch('/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idea }),
+    });
+    const data = await res.json();
+    if (!res.ok) { err.textContent = data.detail || 'Server error'; return; }
+
+    const score = data.score;
+    let scoreClass = 'score-low';
+    if (score >= 60) scoreClass = 'score-high';
+    else if (score >= 35) scoreClass = 'score-medium';
+
+    let vClass = 'verdict-insufficient-info';
+    if (data.verdict === 'build') vClass = 'verdict-build';
+    else if (data.verdict === 'narrow') vClass = 'verdict-narrow';
+    else if (data.verdict === 'pivot') vClass = 'verdict-pivot';
+    else if (data.verdict === 'abandon') vClass = 'verdict-abandon';
+
+    let verdictLabel = data.verdict.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase());
+    if (data.verdict === 'insufficient-info') verdictLabel = 'Insufficient Info — Provide More Details';
+
+    let html = `
+      <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <div class="score-badge ${scoreClass}">${score}/100</div>
+        <div class="verdict-badge ${vClass}">${verdictLabel}</div>
+      </div>`;
+
+    if (data.evaluation_reasoning) {
+      html += `<div class="reasoning-box"><strong>Assessment:</strong> ${data.evaluation_reasoning}</div>`;
+    }
+
+    if (data.unresolved_claims_stripped > 0) {
+      html += `<div class="stripped-note">⚠ ${data.unresolved_claims_stripped} unsupported claim(s) were removed by the validator.</div>`;
+    }
+
+    html += '<hr>' + mdToHtml(data.markdown);
+    html += '<br><button onclick="resetForm()" class="new-btn">Run Another Idea</button>';
+    report.innerHTML = html;
+    report.classList.add('show');
+  } catch (e) {
+    err.textContent = 'Network error — is the server running?';
+  } finally {
+    btn.disabled = false;
+    loading.classList.remove('show');
+  }
+}
+
+function mdToHtml(md) {
+  let html = md
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^(\*|-) (.+)$/gm, '<li>$2</li>')
+    .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/^---$/gm, '<hr>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\|(.+)\|/g, function(m) { return m; })
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  html = '<p>' + html + '</p>';
+  html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<li>/g, '<ul><li>').replace(/<\/li>(?![\s\S]*?<\/li>)/g, '</li></ul>');
+  html = html.replace(/<\/ul>\s*<ul>/g, '');
+  html = html.replace(/<p>\|/g, '<table><tr><td>').replace(/\|<\/p>/g, '</td></tr></table>');
+  return html;
+}
+
+function resetForm() {
+  document.getElementById('report').classList.remove('show');
+  document.getElementById('idea-input').value = '';
+  document.getElementById('idea-input').focus();
+}
+</script>
+</body>
+</html>

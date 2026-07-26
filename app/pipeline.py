@@ -1,0 +1,150 @@
+import asyncio
+from typing import TypedDict
+
+from langgraph.graph import StateGraph, END
+
+from app.schemas import (
+    IntakeResult,
+    DemandSignal,
+    CompetitorEntry,
+    MarketSizing,
+    ViabilityScore,
+    ValidationReport,
+    OverallEvaluation,
+)
+from app.agents.intake import parse_intake
+from app.agents.demand import run_demand_signal
+from app.agents.competitor import run_competitor_discovery
+from app.agents.market_sizing import run_market_sizing
+from app.agents.scoring import compute_viability, evaluation_to_viability
+from app.agents.risks import derive_risks
+from app.agents.aggregator import aggregate
+from app.agents.validator import validate_report
+from app.agents.evaluator import evaluate
+from app.agents.plan_writer import draft_business_plan
+from app.renderer import render_to_markdown
+
+
+class PipelineState(TypedDict):
+    raw_idea: str
+    intake: IntakeResult | None
+    demand: DemandSignal | None
+    competitors: list[CompetitorEntry] | None
+    market_sizing: MarketSizing | None
+    risks: list[str] | None
+    viability: ViabilityScore | None
+    evaluation: OverallEvaluation | None
+    business_plan_draft: str | None
+    report: ValidationReport | None
+    markdown: str | None
+    unresolved_claims_stripped: int
+    error: str | None
+
+
+def node_intake(state: PipelineState) -> dict:
+    result = parse_intake(state["raw_idea"])
+    return {"intake": result}
+
+
+async def node_research(state: PipelineState) -> dict:
+    intake = state["intake"]
+    demand_task = run_demand_signal(intake)
+    comp_task = run_competitor_discovery(intake)
+    market_task = run_market_sizing(intake)
+
+    demand, competitors, market_sizing = await asyncio.gather(
+        demand_task, comp_task, market_task,
+    )
+
+    risks = derive_risks(intake, demand, competitors, market_sizing)
+
+    return {
+        "demand": demand,
+        "competitors": competitors,
+        "market_sizing": market_sizing,
+        "risks": risks,
+    }
+
+
+async def node_evaluate(state: PipelineState) -> dict:
+    evaluation = await evaluate(
+        intake=state["intake"],
+        demand=state["demand"],
+        competitors=state.get("competitors", []),
+        market_sizing=state["market_sizing"],
+    )
+    viability = evaluation_to_viability(evaluation)
+    return {"evaluation": evaluation, "viability": viability}
+
+
+def node_aggregate(state: PipelineState) -> dict:
+    report = aggregate(
+        intake=state["intake"],
+        demand=state["demand"],
+        competitors=state.get("competitors", []),
+        market_sizing=state["market_sizing"],
+        risks=state.get("risks", []),
+        evaluation=state["evaluation"],
+    )
+    report.viability = state["viability"]
+    return {"report": report}
+
+
+def node_validate(state: PipelineState) -> dict:
+    validated, stripped = validate_report(state["report"])
+    return {"report": validated, "unresolved_claims_stripped": stripped}
+
+
+async def node_plan_writer(state: PipelineState) -> dict:
+    report = state["report"]
+    draft = await draft_business_plan(report)
+    report.business_plan_draft = draft
+    return {"business_plan_draft": draft, "report": report}
+
+
+def node_render(state: PipelineState) -> dict:
+    md = render_to_markdown(state["report"])
+    return {"markdown": md}
+
+
+def build_pipeline() -> StateGraph:
+    builder = StateGraph(PipelineState)
+
+    builder.add_node("intake", node_intake)
+    builder.add_node("research", node_research)
+    builder.add_node("evaluate", node_evaluate)
+    builder.add_node("aggregate", node_aggregate)
+    builder.add_node("validate", node_validate)
+    builder.add_node("plan_writer", node_plan_writer)
+    builder.add_node("render", node_render)
+
+    builder.set_entry_point("intake")
+    builder.add_edge("intake", "research")
+    builder.add_edge("research", "evaluate")
+    builder.add_edge("evaluate", "aggregate")
+    builder.add_edge("aggregate", "validate")
+    builder.add_edge("validate", "plan_writer")
+    builder.add_edge("plan_writer", "render")
+    builder.add_edge("render", END)
+
+    return builder.compile()
+
+
+async def run_pipeline(raw_idea: str) -> PipelineState:
+    graph = build_pipeline()
+    initial = PipelineState(
+        raw_idea=raw_idea,
+        intake=None,
+        demand=None,
+        competitors=None,
+        market_sizing=None,
+        risks=None,
+        viability=None,
+        evaluation=None,
+        business_plan_draft=None,
+        report=None,
+        markdown=None,
+        unresolved_claims_stripped=0,
+        error=None,
+    )
+    return await graph.ainvoke(initial)
