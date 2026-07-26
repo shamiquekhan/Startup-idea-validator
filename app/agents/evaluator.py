@@ -2,7 +2,7 @@
 
 import json
 import re
-from langchain_ollama import ChatOllama
+from app.model_config import get_llm_with_fallback as get_llm
 
 from app.schemas import (
     IntakeResult, DemandSignal, CompetitorEntry, MarketSizing,
@@ -94,7 +94,7 @@ async def evaluate(
     )
 
     try:
-        llm = ChatOllama(model=model, temperature=0.2, num_predict=2048)
+        llm = get_llm(model=model, temperature=0.2, num_predict=2048)
         response = llm.invoke(prompt)
         text = response.content.strip()
         text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -103,6 +103,9 @@ async def evaluate(
         return _parse_evaluation(data, intake.startup_type, intake.input_quality)
     except Exception:
         return _fallback_evaluation(demand, competitors, intake.input_quality)
+
+
+_PLACEHOLDER_RE = re.compile(r"^(condition|step|criteria|example)\s*\d+$", re.I)
 
 
 def _parse_evaluation(data: dict, startup_type: StartupType, input_quality: str = "poor") -> OverallEvaluation:
@@ -123,20 +126,33 @@ def _parse_evaluation(data: dict, startup_type: StartupType, input_quality: str 
     if not dimensions:
         dimensions = _default_dimensions(input_quality)
 
+    weight_sum = sum(d.weight for d in dimensions)
+    if abs(weight_sum - 1.0) > 0.05 and weight_sum > 0:
+        for d in dimensions:
+            d.weight = round(d.weight / weight_sum, 3)
+
     rec_data = data.get("recommendation", {})
     if isinstance(rec_data, str):
         rec_data = {"verdict": rec_data, "summary": rec_data}
 
+    kill_criteria = rec_data.get("kill_criteria", [])
+    next_steps = rec_data.get("next_steps", [])
+
+    if any(_PLACEHOLDER_RE.match(s.strip()) for s in kill_criteria + next_steps):
+        raise ValueError("LLM returned placeholder text instead of real criteria")
+
     rec = Recommendation(
         verdict=rec_data.get("verdict", "insufficient-info"),
         summary=rec_data.get("summary", "Assessment complete."),
-        kill_criteria=rec_data.get("kill_criteria", []),
-        next_steps=rec_data.get("next_steps", []),
+        kill_criteria=kill_criteria,
+        next_steps=next_steps,
     )
 
     overall = data.get("overall_score", 0)
     if not overall:
         overall = round(sum(d.score * d.weight for d in dimensions))
+    else:
+        overall = round(float(overall))
 
     return OverallEvaluation(
         dimensions=dimensions,

@@ -16,6 +16,7 @@ Built as a standalone multi-agent pipeline, using free/low-cost data sourcing vi
 ## 2. Market Landscape (why this, and how to differentiate)
 
 **What exists today:**
+
 - General-purpose AI business-plan generators (e.g. Venturekit-style tools) — structure and format a plan from user input, but don't do original market research. Essentially writing assistants.
 - Free idea validators (e.g. NxCode-style tools) — quick SWOT + market-size calculators, shallow, no real sourcing, often just prompt-and-guess.
 - All-in-one suites (IdeaProof, WorthBuild-style platforms) — validation + business plan + branding + ad creatives bundled, credit-based pricing (roughly €0.20–0.50 per validation run in credits). Broad scope, but the validation step itself is often generic and not well-sourced.
@@ -42,6 +43,7 @@ Built as a standalone multi-agent pipeline, using free/low-cost data sourcing vi
 7. **One-page business plan draft** — problem, solution, target market, competitive positioning, GTM suggestion, key risks, next validation steps
 
 **Explicit non-goals for v1** (to keep scope tight and demoable):
+
 - No branding, logo, or ad-creative generation
 - No financial projections/spreadsheet modeling
 - No customer interview simulation
@@ -89,30 +91,30 @@ User Input (raw idea text)
 
 ## 5. Tech Stack
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Orchestration | LangGraph | Graph-based multi-agent orchestration; each node above is a graph node with defined state passed between them |
-| LLM (dev/local) | Ollama running Qwen3 | Free, local, good for iterating without burning API credits |
-| LLM (production/demo) | Groq-hosted model | Fast inference for a responsive live demo |
-| Data sourcing | Apify actors (pay-per-result, free tier available) | See Section 6 for full actor list |
-| Structured validation | Pydantic v2 | Every agent's output is a strict schema — see Section 7 |
-| Storage / caching | SQLite | Cache raw scraped sources per run so repeated runs on similar ideas don't re-scrape unnecessarily |
-| Vector store (optional, v1.1) | ChromaDB | If you want semantic dedup/similarity across competitor mentions later |
-| Backend/API | FastAPI (Python) | Wraps the pipeline as a callable service — needed either way for a Marketplace listing |
-| Demo frontend | Simple form (single text box) → rendered report page | Keep minimal — a clean input/output demo, not a full product UI |
-| Report output | Markdown → rendered to PDF (e.g. via a markdown-to-pdf library) | So the deliverable is a shareable file, not just a webpage |
+| Layer                         | Choice                                                           | Notes                                                                                                         |
+| ----------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Orchestration                 | LangGraph                                                        | Graph-based multi-agent orchestration; each node above is a graph node with defined state passed between them |
+| LLM (dev/local)               | Ollama running Qwen3                                             | Free, local, good for iterating without burning API credits                                                   |
+| LLM (production/demo)         | Groq-hosted model                                                | Fast inference for a responsive live demo                                                                     |
+| Data sourcing                 | Apify actors (pay-per-result, free tier available)               | See Section 6 for full actor list                                                                             |
+| Structured validation         | Pydantic v2                                                      | Every agent's output is a strict schema — see Section 7                                                      |
+| Storage / caching             | SQLite                                                           | Cache raw scraped sources per run so repeated runs on similar ideas don't re-scrape unnecessarily             |
+| Vector store (optional, v1.1) | ChromaDB                                                         | If you want semantic dedup/similarity across competitor mentions later                                        |
+| Backend/API                   | FastAPI (Python)                                                 | Wraps the pipeline as a callable service — needed either way for a Marketplace listing                       |
+| Demo frontend                 | Simple form (single text box) → rendered report page            | Keep minimal — a clean input/output demo, not a full product UI                                              |
+| Report output                 | Markdown → rendered to PDF (e.g. via a markdown-to-pdf library) | So the deliverable is a shareable file, not just a webpage                                                    |
 
 ---
 
 ## 6. Data Sourcing — Apify Actors
 
-| Actor | Purpose | Notes |
-|---|---|---|
-| Google Search Results Scraper | SERP data for demand signals, competitor discovery, general topic research | Cheap, fast, good default first call for almost every idea |
-| Crunchbase Scraper | Company profiles, funding rounds, founders, investors for competitor + market sizing | Pay-per-result; useful for funded-startup competitors specifically |
-| Company Research & Analysis Agent | Aggregated company intelligence (LinkedIn, PitchBook, Crunchbase) for a given competitor | Use selectively — richer but more expensive per call |
-| G2 Reviews Scraper | Product reviews, pricing, competitor mentions for SaaS-category ideas | Optional for v1, useful mainly when the idea is software/SaaS |
-| Reddit/forum scraper | Organic pain-point discussion for demand signal evidence | Good source of real, unfiltered user language about the problem |
+| Actor                             | Purpose                                                                                  | Notes                                                              |
+| --------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Google Search Results Scraper     | SERP data for demand signals, competitor discovery, general topic research               | Cheap, fast, good default first call for almost every idea         |
+| Crunchbase Scraper                | Company profiles, funding rounds, founders, investors for competitor + market sizing     | Pay-per-result; useful for funded-startup competitors specifically |
+| Company Research & Analysis Agent | Aggregated company intelligence (LinkedIn, PitchBook, Crunchbase) for a given competitor | Use selectively — richer but more expensive per call              |
+| G2 Reviews Scraper                | Product reviews, pricing, competitor mentions for SaaS-category ideas                    | Optional for v1, useful mainly when the idea is software/SaaS      |
+| Reddit/forum scraper              | Organic pain-point discussion for demand signal evidence                                 | Good source of real, unfiltered user language about the problem    |
 
 **Sequencing per run:** Search scraper runs first (cheap, broad) to identify candidate competitors and discussion threads → Crunchbase/company scrapers run only on the specific candidates identified, to avoid wasting pay-per-result credits on a broad blind search.
 
@@ -167,6 +169,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 ## 8. Phase-Wise Build Plan
 
 ### Phase 0 — Setup & Scoping (0.5–1 day)
+
 - Finalize scope against this doc with Suproc PM
 - Set up Apify account, test free-tier credits on Google Search Results Scraper and Crunchbase Scraper with 2–3 sample ideas, sanity-check output quality
 - Set up local dev environment: Python, LangGraph, Ollama + Qwen3 pulled locally
@@ -175,6 +178,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 **Deliverable:** working dev environment, confirmed Apify actor outputs look usable
 
 ### Phase 1 — Core Pipeline Skeleton (2–3 days)
+
 - Define all Pydantic schemas (Section 7)
 - Build Intake Agent: raw text → structured idea object (problem, solution, target market, category)
 - Build Report Renderer: structured JSON → Markdown output (build this early so you can visually inspect progress at every later phase)
@@ -183,6 +187,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 **Deliverable:** a runnable pipeline that produces a (currently fake) report end-to-end. This proves the plumbing works before adding real research.
 
 ### Phase 2 — Demand Signal Agent (1–2 days)
+
 - Build the search query generation logic (idea → 3–5 targeted search/forum queries)
 - Wire Google Search Results Scraper + Reddit scraper
 - Parse results into `SourcedClaim` objects
@@ -191,6 +196,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 **Deliverable:** given a test idea, agent returns real demand evidence with working source links
 
 ### Phase 3 — Competitor Agent (2 days)
+
 - Build competitor discovery query logic
 - Wire Google Search Results Scraper for broad discovery, then Crunchbase Scraper for the top candidates identified
 - Deduplicate competitors found across both sources
@@ -199,6 +205,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 **Deliverable:** given a test idea, agent returns a real competitor list with sources, no duplicates
 
 ### Phase 4 — Market Sizing Agent (1–2 days)
+
 - Build logic to aggregate funding totals/category scale signals from the competitor data already gathered (reuse Phase 3 output rather than a fully separate scrape)
 - Produce a clearly-labeled directional estimate, never a confident hard number
 - Write the `basis` claims with sources
@@ -206,6 +213,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 **Deliverable:** market sizing section that's honest about its own uncertainty
 
 ### Phase 5 — Evidence Aggregator + Validator/QA Agent (2 days)
+
 - Build the aggregator that merges outputs from Phases 2–4 into one evidence set
 - Build the Validator: walks every claim in the aggregated evidence, confirms a `source_url` is present and well-formed (syntactic URL check), strips anything that fails
 - Track and expose `unresolved_claims_stripped` count
@@ -213,6 +221,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 **Deliverable:** a hardened evidence set — nothing enters the next phase without a source
 
 ### Phase 6 — Scoring Agent (1 day)
+
 - Design the weighting formula across demand strength, competitor density/saturation, market sizing signal, and risk flags
 - Keep it as simple arithmetic over the classified signals, not another LLM call — this keeps the score explainable and reproducible
 - Write the `weighting_explanation` string generation
@@ -220,12 +229,14 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 **Deliverable:** a viability score that's consistent (same inputs → same score) and explainable
 
 ### Phase 7 — Plan Writer Agent (1–2 days)
+
 - Prompt the writer agent to draft the one-page business plan using ONLY the validated `ValidationReport` object as context — explicitly instruct it not to introduce new facts
 - Test with a few ideas to confirm it isn't smuggling in unsourced claims (spot-check against the aggregated evidence)
 
 **Deliverable:** a coherent, well-written plan draft that traces cleanly back to validated evidence
 
 ### Phase 8 — API Wrapper & Demo Frontend (2 days)
+
 - Wrap the full pipeline in a FastAPI endpoint: idea text in → `ValidationReport` JSON out
 - Build a minimal frontend: single text input → runs the pipeline → renders the Markdown/PDF report
 - Add basic loading states (this pipeline will take 30–90 seconds per run given multiple scraper calls — set expectations in the UI)
@@ -233,6 +244,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 **Deliverable:** a working, demoable end-to-end product, not just a script
 
 ### Phase 9 — Testing & Sample Runs (1–2 days)
+
 - Run 5–8 sample startup ideas through the full pipeline, deliberately mixing strong ideas, weak/saturated ideas, and vague ideas, to show the range of outputs
 - Manually verify every source link in at least 2 full reports actually supports the claim it's attached to
 - Fix any prompt/logic issues surfaced
@@ -240,6 +252,7 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 **Deliverable:** a small library of sample reports you can show in the Marketplace listing
 
 ### Phase 10 — Marketplace Packaging (1 day)
+
 - Write the listing copy: what it does, what makes it different (source-cited, not opinion-based), 1–2 sample report excerpts
 - Decide and document the usage/pricing model (see open questions)
 - Final pass on report formatting/branding for presentability
@@ -269,13 +282,13 @@ The `unresolved_claims_stripped` field matters — it's a transparency signal yo
 
 ## 11. Risks & Mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Crunchbase/G2 scraping breaks (sites actively resist scraping) | Build with graceful fallback per data source; never hard-fail the whole run on one source |
-| Apify costs creep with public demo usage | Rate-limit demo runs; cache repeated/similar queries |
-| Scope creep toward branding/ads/financial modeling (common in this market) | Hold the line at the 7-section report defined in Section 3; anything else goes in a v1.1 backlog |
-| LLM writer smuggling in unsourced claims despite instructions | Automated source-integrity check (Section 9) catches this regardless of prompt reliability |
-| Report feels generic if evidence is thin for an obscure idea | Explicitly show "insufficient public data" rather than papering over gaps — honesty is part of the credibility pitch |
+| Risk                                                                       | Mitigation                                                                                                            |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Crunchbase/G2 scraping breaks (sites actively resist scraping)             | Build with graceful fallback per data source; never hard-fail the whole run on one source                             |
+| Apify costs creep with public demo usage                                   | Rate-limit demo runs; cache repeated/similar queries                                                                  |
+| Scope creep toward branding/ads/financial modeling (common in this market) | Hold the line at the 7-section report defined in Section 3; anything else goes in a v1.1 backlog                      |
+| LLM writer smuggling in unsourced claims despite instructions              | Automated source-integrity check (Section 9) catches this regardless of prompt reliability                            |
+| Report feels generic if evidence is thin for an obscure idea               | Explicitly show "insufficient public data" rather than papering over gaps — honesty is part of the credibility pitch |
 
 ---
 

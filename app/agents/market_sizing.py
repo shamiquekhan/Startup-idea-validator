@@ -64,12 +64,13 @@ async def run_market_sizing(
             )
         )
 
+    basis = basis[:8]
     summary = _build_estimate_summary(basis, competitors)
     confidence = "medium" if len(basis) >= 3 else "low"
 
     return MarketSizing(
         estimate_summary=summary,
-        basis=basis[:8],
+        basis=basis,
         confidence=confidence,
     )
 

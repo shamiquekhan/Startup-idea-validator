@@ -1,6 +1,6 @@
 import json
 import re
-from langchain_ollama import ChatOllama
+from app.model_config import get_llm_with_fallback as get_llm
 from app.schemas import ValidationReport
 
 _PLAN_WRITER_PROMPT = """You are a business plan writer. Draft a concise one-page business plan based ONLY on the validated evidence below.
@@ -30,7 +30,7 @@ async def draft_business_plan(report: ValidationReport, model: str = "qwen3:1.7b
     evidence_json = json.dumps(evidence, indent=2, default=str)
 
     try:
-        llm = ChatOllama(model=model, temperature=0.3, num_predict=2048)
+        llm = get_llm(model=model, temperature=0.3, num_predict=2048)
         response = llm.invoke(_PLAN_WRITER_PROMPT.format(evidence_json=evidence_json))
         text = response.content.strip()
         text = re.sub(r"^```(?:markdown)?\s*", "", text)

@@ -12,8 +12,10 @@ from app.schemas import (
     ViabilityScore,
     ValidationReport,
     OverallEvaluation,
+    CompletenessResult,
 )
 from app.agents.intake import parse_intake
+from app.agents.completeness import check_completeness
 from app.agents.demand import run_demand_signal
 from app.agents.competitor import run_competitor_discovery
 from app.agents.market_sizing import run_market_sizing
@@ -22,6 +24,7 @@ from app.agents.risks import derive_risks
 from app.agents.aggregator import aggregate
 from app.agents.validator import validate_report
 from app.agents.evaluator import evaluate
+from app.agents.decision_support import generate_decision_support
 from app.agents.plan_writer import draft_business_plan
 from app.renderer import render_to_markdown
 from caching.cache import load_cached, save_cache
@@ -30,17 +33,24 @@ from caching.cache import load_cached, save_cache
 class PipelineState(TypedDict):
     raw_idea: str
     intake: IntakeResult | None
+    completeness: dict | None
     demand: DemandSignal | None
     competitors: list[CompetitorEntry] | None
     market_sizing: MarketSizing | None
     risks: list[str] | None
     viability: ViabilityScore | None
     evaluation: OverallEvaluation | None
+    decision_support: dict | None
     business_plan_draft: str | None
     report: ValidationReport | None
     markdown: str | None
     unresolved_claims_stripped: int
     error: str | None
+
+
+async def node_completeness(state: PipelineState) -> dict:
+    result = await check_completeness(state["raw_idea"])
+    return {"completeness": result}
 
 
 def node_intake(state: PipelineState) -> dict:
@@ -58,13 +68,10 @@ async def node_research(state: PipelineState) -> dict:
         demand_task, comp_task, market_task,
     )
 
-    risks = derive_risks(intake, demand, competitors, market_sizing)
-
     return {
         "demand": demand,
         "competitors": competitors,
         "market_sizing": market_sizing,
-        "risks": risks,
     }
 
 
@@ -75,11 +82,27 @@ async def node_evaluate(state: PipelineState) -> dict:
         competitors=state.get("competitors", []),
         market_sizing=state["market_sizing"],
     )
+
+    risks = derive_risks(
+        intake=state["intake"],
+        demand=state["demand"],
+        competitors=state.get("competitors", []),
+        market_sizing=state["market_sizing"],
+        evaluation=evaluation,
+    )
+
     viability = evaluation_to_viability(evaluation)
-    return {"evaluation": evaluation, "viability": viability}
+    return {"evaluation": evaluation, "viability": viability, "risks": risks}
 
 
 def node_aggregate(state: PipelineState) -> dict:
+    completeness_dict = state.get("completeness") or {}
+    completeness_model = CompletenessResult(
+        completeness_score=completeness_dict.get("completeness_score", 0),
+        fields=completeness_dict.get("fields", {}),
+        follow_up_questions=completeness_dict.get("follow_up_questions", []),
+        summary=completeness_dict.get("summary", ""),
+    )
     report = aggregate(
         intake=state["intake"],
         demand=state["demand"],
@@ -87,9 +110,23 @@ def node_aggregate(state: PipelineState) -> dict:
         market_sizing=state["market_sizing"],
         risks=state.get("risks", []),
         evaluation=state["evaluation"],
+        completeness=completeness_model,
     )
     report.viability = state["viability"]
     return {"report": report}
+
+
+async def node_decision_support(state: PipelineState) -> dict:
+    ds = await generate_decision_support(
+        intake=state["intake"],
+        demand=state["demand"],
+        competitors=state.get("competitors", []),
+        market_sizing=state["market_sizing"],
+        evaluation=state["evaluation"],
+    )
+    report = state["report"]
+    report.decision_support = ds
+    return {"decision_support": ds, "report": report}
 
 
 def node_validate(state: PipelineState) -> dict:
@@ -112,19 +149,23 @@ def node_render(state: PipelineState) -> dict:
 def build_pipeline() -> StateGraph:
     builder = StateGraph(PipelineState)
 
+    builder.add_node("completeness", node_completeness)
     builder.add_node("intake", node_intake)
     builder.add_node("research", node_research)
     builder.add_node("evaluate", node_evaluate)
     builder.add_node("aggregate", node_aggregate)
+    builder.add_node("decision_support", node_decision_support)
     builder.add_node("validate", node_validate)
     builder.add_node("plan_writer", node_plan_writer)
     builder.add_node("render", node_render)
 
-    builder.set_entry_point("intake")
+    builder.set_entry_point("completeness")
+    builder.add_edge("completeness", "intake")
     builder.add_edge("intake", "research")
     builder.add_edge("research", "evaluate")
     builder.add_edge("evaluate", "aggregate")
-    builder.add_edge("aggregate", "validate")
+    builder.add_edge("aggregate", "decision_support")
+    builder.add_edge("decision_support", "validate")
     builder.add_edge("validate", "plan_writer")
     builder.add_edge("plan_writer", "render")
     builder.add_edge("render", END)

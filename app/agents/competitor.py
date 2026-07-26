@@ -1,7 +1,7 @@
 import asyncio
 import json
 import re
-from langchain_ollama import ChatOllama
+from app.model_config import get_llm_with_fallback as get_llm
 from app.schemas import CompetitorEntry, IntakeResult
 from app.search import search_web
 
@@ -25,9 +25,34 @@ _DOMAIN_COMPETITOR_QUERIES = {
         "personal finance app",
     ],
     "healthtech": [
-        "healthtech companies digital health",
-        "telemedicine platform vendors",
-        "healthcare software",
+        "digital health platform company",
+        "healthcare software vendor",
+        "medical practice software",
+    ],
+    "legaltech": [
+        "legal tech software company",
+        "legal AI platform",
+        "law practice management software",
+    ],
+    "edtech": [
+        "edtech platform company",
+        "learning management system",
+        "education software vendor",
+    ],
+    "insurtech": [
+        "insurtech company",
+        "insurance software platform",
+        "digital insurance provider",
+    ],
+    "proptech": [
+        "proptech company",
+        "real estate software platform",
+        "property technology startup",
+    ],
+    "agtech": [
+        "agriculture technology company",
+        "precision farming software",
+        "agtech startup",
     ],
     "saas": [
         "enterprise software companies",
@@ -112,7 +137,7 @@ async def _classify_result(title: str, url: str, snippet: str, domain_context: s
         return False, None
 
     try:
-        llm = ChatOllama(model="qwen3:1.7b", temperature=0.1, num_predict=256)
+        llm = get_llm(model="qwen3:1.7b", temperature=0.1, num_predict=256)
         prompt = _COMPETITOR_CLASSIFY_PROMPT.format(
             domain=domain_context,
             title=title,
@@ -326,7 +351,59 @@ async def run_competitor_discovery(intake: IntakeResult) -> list[CompetitorEntry
                 )
             )
 
+    if entries:
+        entries = await _enrich_competitors(entries, domain_context)
+
     return _deduplicate(entries)[:12]
+
+
+_COMPETITOR_ENRICH_PROMPT = """For each competitor below, infer their focus area, target customer, competitive weakness, and YOUR edge (why a customer would choose YOUR startup over this competitor). The weakness should be a specific relative positioning gap, not a generic criticism.
+
+Domain context: {domain}
+
+Return ONLY valid JSON as an array: [{{"name": "...", "focus_area": "...", "target_customer": "...", "weakness": "relative weakness vs your startup", "your_edge": "why customer chooses you"}}, ...]
+
+Competitor list:
+{competitors_json}
+
+JSON:"""
+
+
+async def _enrich_competitors(entries: list[CompetitorEntry], domain_context: str) -> list[CompetitorEntry]:
+    if not entries:
+        return entries
+
+    competitors_json = json.dumps([
+        {"name": e.name, "description": e.description}
+        for e in entries
+    ], indent=2)
+
+    try:
+        llm = get_llm(model="qwen3:1.7b", temperature=0.2, num_predict=1024)
+        prompt = _COMPETITOR_ENRICH_PROMPT.format(
+            domain=domain_context[:200],
+            competitors_json=competitors_json,
+        )
+        response = llm.invoke(prompt)
+        text = response.content.strip()
+        start = text.find("[")
+        end = text.rfind("]")
+        if start >= 0 and end > start:
+            text = text[start:end+1]
+        enriched = json.loads(text)
+
+        name_map = {e.name: e for e in entries}
+        for item in enriched:
+            name = item.get("name", "")
+            if name in name_map:
+                name_map[name].focus_area = item.get("focus_area") or None
+                name_map[name].target_customer = item.get("target_customer") or None
+                name_map[name].weakness = item.get("weakness") or None
+                name_map[name].your_edge = item.get("your_edge") or None
+    except Exception:
+        pass
+
+    return entries
 
 
 def _simple_extract_name(title: str) -> str | None:

@@ -1,6 +1,7 @@
 """Shared search utility — free DuckDuckGo backend (via ddgs), structured for Apify swap-in."""
 
 import asyncio
+import os
 from typing import Protocol
 from dataclasses import dataclass
 
@@ -45,6 +46,16 @@ _current_backend: SearchBackend = DuckDuckGoBackend()
 def set_backend(backend: SearchBackend):
     global _current_backend
     _current_backend = backend
+
+
+def auto_configure():
+    """If APIFY_API_KEY is set, swap to ApifyMultiBackend."""
+    if os.environ.get("APIFY_API_KEY", "").strip():
+        from app.agents.search_apify import ApifyMultiBackend
+        set_backend(ApifyMultiBackend())
+
+
+auto_configure()
 
 
 async def search_web(query: str, max_results: int = 10) -> list[SearchResult]:

@@ -1,6 +1,6 @@
 import json
 import re
-from langchain_ollama import ChatOllama
+from app.model_config import get_llm_with_fallback as get_llm
 from app.schemas import DemandSignal, SourcedClaim, IntakeResult
 from app.search import search_web
 
@@ -44,6 +44,26 @@ _FALLBACK_CATEGORY_QUERIES = {
         "healthcare AI applications", "remote patient monitoring growth",
         "healthtech funding 2025",
     ],
+    "legaltech": [
+        "legal technology market", "legal AI software trends",
+        "legal tech adoption law firms", "legal automation market",
+    ],
+    "edtech": [
+        "edtech market growth 2025", "online learning platforms",
+        "education technology adoption", "edtech funding trends",
+    ],
+    "insurtech": [
+        "insurtech market trends", "insurance technology startups",
+        "digital insurance platforms",
+    ],
+    "proptech": [
+        "proptech market growth", "real estate technology trends",
+        "property management software market",
+    ],
+    "agtech": [
+        "agtech market trends 2025", "precision agriculture technology",
+        "agriculture software market", "farm technology adoption",
+    ],
     "saas": [
         "b2b saas market trends 2025", "enterprise software growth",
         "saas customer acquisition cost", "cloud software adoption",
@@ -70,7 +90,7 @@ async def _build_queries(intake: IntakeResult) -> list[str]:
         return _FALLBACK_CATEGORY_QUERIES[cat]
 
     try:
-        llm = ChatOllama(model="qwen3:1.7b", temperature=0.3, num_predict=512)
+        llm = get_llm(model="qwen3:1.7b", temperature=0.3, num_predict=512)
         prompt = _DOMAIN_QUERY_PROMPT.format(
             problem=intake.problem_statement,
             solution=intake.proposed_solution,

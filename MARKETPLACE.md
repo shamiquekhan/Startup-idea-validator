@@ -21,6 +21,11 @@ Most idea validators just prompt an LLM and let it invent competitors and market
 - **No hallucinated competitors** — the Plan Writer is explicitly forbidden from introducing new facts. It can only phrase what the validator has already approved.
 - **Transparent scoring** — the weighting formula (demand 30%, competition 25%, market size 25%, risk 20%) is shown in every report, not hidden.
 
+## What it doesn't do (honest limitations)
+- **No premium data sources** — all evidence comes from DuckDuckGo web search. There's no Crunchbase, G2, or Apify integration. Competitor funding signals are inferred from snippets, not from a structured database.
+- **No hosted inference** — the agent runs Ollama locally. Production deployment needs separate model hosting (the build guide proposes Groq).
+- **No PDF export** — output is JSON + Markdown only (PDF was spec'd but not implemented in this build).
+
 ## Sample output
 > **Viability Score: 76/100**
 > **Demand signal:** strong (12 evidence sources)

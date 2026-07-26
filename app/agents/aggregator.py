@@ -8,6 +8,7 @@ from app.schemas import (
     ValidationReport,
     OverallEvaluation,
     SourcedClaim,
+    CompletenessResult,
 )
 
 
@@ -18,6 +19,7 @@ def aggregate(
     market_sizing: MarketSizing,
     risks: list[str],
     evaluation: OverallEvaluation | None = None,
+    completeness: CompletenessResult | None = None,
 ) -> ValidationReport:
     demand = _dedup_demand(demand)
     competitors = _dedup_competitors(competitors)
@@ -31,6 +33,7 @@ def aggregate(
         risks=risks,
         evaluation=evaluation,
         business_plan_draft="",
+        completeness=completeness,
     )
 
 
