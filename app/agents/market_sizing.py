@@ -44,7 +44,7 @@ async def run_market_sizing(
     queries = _build_queries(intake)
     all_results = []
     for q in queries:
-        results = await search_web(q, max_results=5)
+        results = await search_web(q, max_results=3)
         all_results.extend(results)
 
     seen_urls = set()

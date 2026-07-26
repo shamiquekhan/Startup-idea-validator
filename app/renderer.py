@@ -88,6 +88,9 @@ def render_to_markdown(report: ValidationReport) -> str:
     if report.intake.missing_fields:
         lines.append("**Missing from input:** " + ", ".join(report.intake.missing_fields) + "\n")
 
+    if report.intake.target_user in ("not specified", "unknown", ""):
+        lines.append("> ⚠ **Customer not specified** — the analysis below cannot evaluate product-market fit without knowing who the customer is.\n\n")
+
     lines.extend([
         "\n---\n",
         "## 2. Demand Signal Check\n",

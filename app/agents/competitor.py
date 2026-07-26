@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from langchain_ollama import ChatOllama
@@ -5,12 +6,18 @@ from app.schemas import CompetitorEntry, IntakeResult
 from app.search import search_web
 
 
+_CATEGORY_ALIASES = {
+    "deep-tech": "deeptech",
+    "enterprise-saas": "saas",
+    "smb-saas": "saas",
+}
+
 _DOMAIN_COMPETITOR_QUERIES = {
     "cleantech": [
-        "energy grid optimization company",
-        "grid management software vendors",
-        "utility demand response platform",
-        "renewable energy software",
+        "battery technology company",
+        "energy storage startup",
+        "renewable energy software platform",
+        "clean tech",
     ],
     "fintech": [
         "fintech payment processing companies",
@@ -22,22 +29,19 @@ _DOMAIN_COMPETITOR_QUERIES = {
         "telemedicine platform vendors",
         "healthcare software",
     ],
-    "enterprise-saas": [
+    "saas": [
         "enterprise software companies",
         "b2b saas platform",
-    ],
-    "smb-saas": [
-        "small business software tools",
-        "saas for freelancers",
-        "business management software",
     ],
     "ecommerce": [
         "ecommerce platform companies",
         "online retail software",
     ],
     "deeptech": [
-        "ai ml platform companies",
-        "deep tech startup",
+        "materials informatics platform",
+        "ai scientific discovery startup",
+        "deep tech ai company",
+        "battery materials ai",
     ],
     "developer-tools": [
         "developer tools companies",
@@ -52,6 +56,7 @@ _DOMAIN_COMPETITOR_QUERIES = {
 
 def _build_queries(intake: IntakeResult) -> list[str]:
     cat = (intake.category or "").lower()
+    cat = _CATEGORY_ALIASES.get(cat, cat)
     sol = intake.proposed_solution
     prob = intake.problem_statement
 
@@ -90,20 +95,14 @@ def _shorten(text: str, max_len: int) -> str:
     return text[: text.rfind(" ", 0, max_len)]
 
 
-_COMPETITOR_CLASSIFY_PROMPT = """You are a startup analyst. Given a search result and the startup's domain, determine if this is an actual company operating in a related space.
-
-Startup domain: {domain}
+_COMPETITOR_CLASSIFY_PROMPT = """Startup domain: {domain}
 Title: {title}
 URL: {url}
 Snippet: {snippet}
 
-Return ONLY valid JSON:
-{"is_relevant_company": true/false, "company_name": "extracted name or null", "reason": "brief justification"}
+Is this an actual company in the same domain? Return ONLY valid JSON: {{"is_relevant_company": true/false, "company_name": "name or null", "reason": "10 words max"}}
 
-Criteria for is_relevant_company = true:
-- Must be an actual company, product, or startup (not a news article, blog, forum, directory, list, or review site)
-- Must operate in the same or adjacent domain as the startup (not SEO tools if the startup is energy grid)
-- Company name should be recognizable (not a generic term)
+Criteria for true: must be an actual company/product/startup (NOT a news article, blog, forum, directory, list, review, or research report). Must operate in the same domain as the startup.
 
 JSON:"""
 
@@ -118,12 +117,14 @@ async def _classify_result(title: str, url: str, snippet: str, domain_context: s
             domain=domain_context,
             title=title,
             url=url,
-            snippet=snippet[:500],
+            snippet=(snippet or "")[:500],
         )
         response = llm.invoke(prompt)
         text = response.content.strip()
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
+        start = text.find('{')
+        end = text.rfind('}')
+        if start >= 0 and end > start:
+            text = text[start:end+1]
         data = json.loads(text)
         if data.get("is_relevant_company"):
             name = data.get("company_name")
@@ -165,7 +166,12 @@ def _is_blocklisted(url: str, title: str) -> bool:
         "glassdoor", "indeed", "monster", "ziprecruiter",
         "similarweb", "semrush", "ahrefs", "moz",
         "statista", "grandviewresearch", "marketsandmarkets",
+        "meticulousresearch", "sphericalinsights", "cervicornconsulting",
+        "verifiedmarketresearch", "exactitudeconsultancy", "dataintelo",
+        "startus-insights", "startus",
         "g2", "capterra", "trustpilot", "getapp",
+        "f6s", "tracxn", "pitchbook", "cbinsights", "crunchbase",
+        "linkedin", "zoominfo", "apollo", "lusha",
         "hubspot", "zendesk", "intercom",
         "cnet", "zdnet", "arstechnica", "engadget", "theverge",
         "sciencedaily", "phys", "eurekalert",
@@ -175,6 +181,10 @@ def _is_blocklisted(url: str, title: str) -> bool:
         "eventbrite", "meetup",
         "pcworld", "pcmag", "techradar",
         "entrepreneur", "smallbiztrends",
+        "toolify", "interestingengineering", "nationaldefensemagazine",
+        "newmarketpitch", "intuitionlabs",
+        "ensun", "aiwa-ai", "paradromics",
+        "sifted", "dealroom", "pitchbook",
     }
 
     domain = _domain_from_url(url)
@@ -283,18 +293,25 @@ async def run_competitor_discovery(intake: IntakeResult) -> list[CompetitorEntry
     queries = _build_queries(intake)
     all_results = []
     for q in queries:
-        results = await search_web(q, max_results=8)
+        results = await search_web(q, max_results=5)
         all_results.extend(results)
 
     domain_context = f"{intake.problem_statement[:80]} / {intake.proposed_solution[:80]} / {intake.category or 'general'}"
 
     seen_urls = set()
-    entries: list[CompetitorEntry] = []
+    unique_results = []
     for r in all_results:
-        if r.url in seen_urls:
-            continue
-        seen_urls.add(r.url)
-        is_company, name = await _classify_result(r.title, r.url, r.snippet or "", domain_context)
+        if r.url not in seen_urls:
+            seen_urls.add(r.url)
+            unique_results.append(r)
+
+    classifications = await asyncio.gather(*[
+        _classify_result(r.title, r.url, r.snippet or "", domain_context)
+        for r in unique_results
+    ])
+
+    entries: list[CompetitorEntry] = []
+    for r, (is_company, name) in zip(unique_results, classifications):
         if not is_company:
             continue
         final_name = name or _simple_extract_name(r.title)

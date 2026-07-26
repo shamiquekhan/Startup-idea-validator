@@ -28,9 +28,11 @@ Context:
 
 CRITICAL RULES:
 1. Vary scores across dimensions based on available evidence — do NOT default to 50 for all.
-2. If customer, problem, or solution are missing from input, set customer_clarity, problem_pain, or solution_fit to 20-40 with low confidence.
-3. The overall_score must reflect the weighted sum. If many dimensions are low-confidence and below 50, the overall score should be below 60.
-4. Do NOT recommend "build" if fundamental info (customer, problem) is missing.
+2. If customer, problem, or solution are missing from input, set customer_clarity, problem_pain, or solution_fit to 20-40 with low confidence. State "not specified" — do NOT invent or guess a customer segment.
+3. Never fabricate customer details. If the target user is "not specified" or "unknown", customer_clarity must be ≤30 and the explanation must say "Customer not specified — cannot evaluate".
+4. The overall_score must reflect the weighted sum. If many dimensions are low-confidence and below 50, the overall score should be below 60.
+5. Do NOT recommend "build" if fundamental info (customer, problem) is missing.
+6. For deep-tech/cleantech categories, be especially critical of: experimental validation costs, long sales cycles, regulatory hurdles, and capital requirements.
 
 You MUST return JSON in this EXACT format (use the exact key names shown):
 {{

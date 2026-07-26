@@ -22,11 +22,17 @@ Target user: {target_user}
 Return ONLY a valid JSON array of 5 query strings. No other text.
 JSON:"""
 
+_CATEGORY_ALIASES = {
+    "deep-tech": "deeptech",
+    "enterprise-saas": "saas",
+    "smb-saas": "saas",
+}
+
 _FALLBACK_CATEGORY_QUERIES = {
     "cleantech": [
-        "smart grid modernization", "renewable energy management software",
-        "demand response technology", "grid optimization AI",
-        "virtual power plant market",
+        "battery technology innovation", "energy storage market growth",
+        "renewable energy trends", "grid modernization AI",
+        "clean technology funding",
     ],
     "fintech": [
         "digital banking trends 2025", "fintech payment solutions",
@@ -44,9 +50,9 @@ _FALLBACK_CATEGORY_QUERIES = {
         "business productivity tools market",
     ],
     "deeptech": [
-        "deep tech commercialization", "ai research trends 2025",
-        "machine learning industry adoption", "r&d innovation funding",
-        "deep tech venture capital",
+        "materials informatics AI", "scientific machine learning",
+        "deep tech research commercialization", "ai drug discovery market",
+        "deep tech venture funding 2025",
     ],
     "ecommerce": [
         "ecommerce market growth 2025", "online shopping trends",
@@ -58,6 +64,7 @@ _FALLBACK_CATEGORY_QUERIES = {
 
 async def _build_queries(intake: IntakeResult) -> list[str]:
     cat = (intake.category or "").lower()
+    cat = _CATEGORY_ALIASES.get(cat, cat)
 
     if cat in _FALLBACK_CATEGORY_QUERIES:
         return _FALLBACK_CATEGORY_QUERIES[cat]
@@ -85,16 +92,22 @@ async def _build_queries(intake: IntakeResult) -> list[str]:
 
 def _keyword_fallback_queries(solution: str, category: str | None) -> list[str]:
     sol = _shorten(solution, 30)
+    for prefix in ["i want to build ", "i want to create ", "build an ", "create a ", "develop a ",
+                    "an ai-powered ", "a ", "an "]:
+        if sol.lower().startswith(prefix):
+            sol = sol[len(prefix):]
+            break
+    sol = _shorten(sol, 30)
     cat = category or ""
     queries = [
-        f"{sol} market",
+        f"{sol} market trends",
         f"{sol} industry",
     ]
     if cat:
-        queries.append(f"{cat} {_shorten(sol, 20)} trends")
+        queries.append(f"{cat} {_shorten(sol, 20)}")
         queries.append(f"{cat} market size")
     queries.append(f"{sol} technology")
-    return [q for q in queries if len(q) > 10]
+    return [q for q in queries if len(q) > 10 and q.split()[0] not in ("a", "an", "the")]
 
 
 def _shorten(text: str, max_len: int = 40) -> str:
@@ -122,7 +135,7 @@ async def run_demand_signal(intake: IntakeResult) -> DemandSignal:
     queries = await _build_queries(intake)
     all_results = []
     for q in queries:
-        results = await search_web(q, max_results=5)
+        results = await search_web(q, max_results=3)
         all_results.extend(results)
 
     seen_urls = set()

@@ -2,6 +2,12 @@
 
 from app.schemas import DemandSignal, MarketSizing, CompetitorEntry, IntakeResult
 
+_CATEGORY_ALIASES = {
+    "deep-tech": "deeptech",
+    "enterprise-saas": "saas",
+    "smb-saas": "saas",
+}
+
 
 def derive_risks(
     intake: IntakeResult,
@@ -33,10 +39,16 @@ def derive_risks(
             "clear positioning needed"
         )
     elif len(competitors) == 0:
-        risks.append(
-            "No direct competitors found — this may indicate a blue ocean "
-            "opportunity OR that the problem isn't widely recognized yet"
-        )
+        if cat in ("deeptech", "cleantech", "biotech", "medtech"):
+            risks.append(
+                "No competitors found in search — likely a retrieval gap rather than a "
+                "blue ocean; deep-tech markets typically have active competition"
+            )
+        else:
+            risks.append(
+                "No direct competitors found — this may indicate a blue ocean "
+                "opportunity OR that the problem isn't widely recognized yet"
+            )
 
     if market_sizing.confidence == "low":
         risks.append(
@@ -45,6 +57,8 @@ def derive_risks(
         )
 
     cat = (intake.category or "").lower()
+    cat = _CATEGORY_ALIASES.get(cat, cat)
+
     regulatory_categories = {
         "fintech", "healthtech", "medtech", "biotech", "crypto",
         "blockchain", "legaltech", "insurtech", "proptech",
@@ -58,9 +72,25 @@ def derive_risks(
     capital_intensive = {"deeptech", "cleantech", "biotech", "medtech", "manufacturing"}
     if cat in capital_intensive:
         risks.append(
-            f"Capital-intensive sector ({cat}) — may require significant "
+            "Capital-intensive sector — may require significant "
             "funding for R&D, equipment, or lab infrastructure before generating revenue"
         )
+
+    deep_tech_categories = {"deeptech", "cleantech", "biotech", "medtech"}
+    if cat in deep_tech_categories:
+        risks.append(
+            "Long enterprise sales cycles — deep-tech products often require "
+            "lengthy procurement, pilots, and validation before purchase decisions"
+        )
+        risks.append(
+            "Experimental validation cost — scientific/technical claims need "
+            "real-world proof, which is expensive and time-consuming"
+        )
+        if intake.target_user in ("not specified", "unknown", ""):
+            risks.append(
+                "Customer not identified — deep-tech solutions need a specific "
+                "buyer; without one, product-market fit is uncertain"
+            )
 
     if not risks:
         risks.append("No significant red flags identified from public data")
