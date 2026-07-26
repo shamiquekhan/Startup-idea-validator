@@ -154,12 +154,47 @@ def _parse_evaluation(data: dict, startup_type: StartupType, input_quality: str 
     else:
         overall = round(float(overall))
 
+    overall = _enforce_score_verdict_consistency(overall, rec.verdict, dimensions)
+
     return OverallEvaluation(
         dimensions=dimensions,
         overall_score=min(100, max(0, overall)),
         reasoning=data.get("reasoning", ""),
         recommendation=rec,
     )
+
+
+def _enforce_score_verdict_consistency(
+    overall: int, verdict: str, dimensions: list[EvaluationDimension]
+) -> int:
+    dim_map = {d.name: d.score for d in dimensions}
+    customer = dim_map.get("customer_clarity", 50)
+    business = dim_map.get("business_model", 50)
+    competition = dim_map.get("competitive_position", 50)
+    low_conf_count = sum(1 for d in dimensions if d.confidence == "low")
+
+    if verdict == "build" and (customer < 30 or business < 30):
+        return min(overall, 60)
+
+    if verdict == "build" and low_conf_count >= 4:
+        return min(overall, 55)
+
+    if verdict == "narrow" and overall > 70:
+        return min(overall, 65)
+
+    if verdict == "abandon" and overall > 50:
+        return min(overall, 45)
+
+    if verdict == "insufficient-info" and overall > 50:
+        return min(overall, 45)
+
+    if overall >= 65 and verdict in ("pivot", "abandon", "insufficient-info"):
+        return min(overall, 55)
+
+    if overall < 40 and verdict in ("build",):
+        return 45
+
+    return overall
 
 
 def _default_dimensions(input_quality: str = "poor") -> list[EvaluationDimension]:

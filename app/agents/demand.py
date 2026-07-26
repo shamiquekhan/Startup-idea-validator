@@ -26,6 +26,8 @@ _CATEGORY_ALIASES = {
     "deep-tech": "deeptech",
     "enterprise-saas": "saas",
     "smb-saas": "saas",
+    "sales-tech": "sales-tech",
+    "revops": "sales-tech",
 }
 
 _FALLBACK_CATEGORY_QUERIES = {
@@ -78,6 +80,11 @@ _FALLBACK_CATEGORY_QUERIES = {
         "ecommerce market growth 2025", "online shopping trends",
         "direct to consumer brands", "retail technology adoption",
         "ecommerce customer behavior",
+    ],
+    "sales-tech": [
+        "ai sdr market growth", "sales engagement platform trends",
+        "revenue operations automation", "outbound sales tools 2025",
+        "sales productivity software market",
     ],
 }
 

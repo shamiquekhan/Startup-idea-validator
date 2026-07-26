@@ -7,7 +7,7 @@ StartupType = Literal[
     "ecommerce", "consumer-app", "hardware", "biotech",
     "fintech", "cleantech", "healthtech",
     "legaltech", "edtech", "insurtech", "proptech", "agtech",
-    "developer-tools", "other",
+    "developer-tools", "sales-tech", "revops", "other",
 ]
 
 

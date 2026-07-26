@@ -10,6 +10,8 @@ _CATEGORY_ALIASES = {
     "deep-tech": "deeptech",
     "enterprise-saas": "saas",
     "smb-saas": "saas",
+    "sales-tech": "sales-tech",
+    "revops": "sales-tech",
 }
 
 _DOMAIN_COMPETITOR_QUERIES = {
@@ -75,6 +77,16 @@ _DOMAIN_COMPETITOR_QUERIES = {
     "consumer-app": [
         "consumer app companies",
         "mobile app",
+    ],
+    "sales-tech": [
+        "ai sdr platform",
+        "sales engagement platform",
+        "prospect research tool",
+        "sales outreach automation",
+        "revenue operations software",
+        "crm automation tool",
+        "sales copilot",
+        "outbound sales assistant",
     ],
 }
 
@@ -353,6 +365,7 @@ async def run_competitor_discovery(intake: IntakeResult) -> list[CompetitorEntry
 
     if entries:
         entries = await _enrich_competitors(entries, domain_context)
+        entries = _filter_by_workflow_overlap(entries, intake)
 
     return _deduplicate(entries)[:12]
 
@@ -424,3 +437,113 @@ def _deduplicate(entries: list[CompetitorEntry]) -> list[CompetitorEntry]:
             seen.add(key)
             unique.append(e)
     return unique
+
+
+def _filter_by_workflow_overlap(entries: list[CompetitorEntry], intake: IntakeResult) -> list[CompetitorEntry]:
+    """Filter competitors to only those that actually overlap with the idea's workflow.
+
+    Uses the idea's solution description to build a set of workflow keywords.
+    A competitor passes if its focus_area, description, or name contains
+    at least one workflow keyword from the startup's domain.
+    """
+    lower_solution = intake.proposed_solution.lower()
+    lower_problem = intake.problem_statement.lower()
+
+    keywords = set()
+    for text in [lower_solution, lower_problem]:
+        for kw in _WORKFLOW_KEYWORDS_BY_DOMAIN.get(intake.startup_type, []):
+            if kw in text:
+                keywords.add(kw)
+
+    if not keywords:
+        keywords.update(_WORKFLOW_KEYWORDS_BY_DOMAIN.get(intake.startup_type, []))
+
+    if not keywords:
+        return entries
+
+    filtered = []
+    for e in entries:
+        search_text = " ".join(filter(None, [
+            e.name or "",
+            e.description or "",
+            e.focus_area or "",
+            e.target_customer or "",
+        ])).lower()
+        if any(kw in search_text for kw in keywords):
+            filtered.append(e)
+
+    if not filtered:
+        return entries
+
+    return filtered
+
+
+_WORKFLOW_KEYWORDS_BY_DOMAIN: dict[str, list[str]] = {
+    "sales-tech": [
+        "lead", "prospect", "outreach", "email", "call", "crm",
+        "sales engagement", "sdr", "revenue", "pipeline",
+        "demo", "account", "contact", "client", "deal",
+        "sales automation", "cold email", "sequencing",
+    ],
+    "revops": [
+        "revenue", "quote", "crm", "forecast", "pipeline",
+        "billing", "subscription", "contract",
+    ],
+    "deep-tech": [
+        "material", "molecule", "compound", "chemical", "discovery",
+        "simulation", "scientific", "r&d", "research",
+    ],
+    "legaltech": [
+        "contract", "legal", "law", "case", "document",
+        "compliance", "attorney", "court",
+    ],
+    "fintech": [
+        "payment", "bank", "account", "transaction", "invoice",
+        "card", "lending", "credit", "finance",
+    ],
+    "healthtech": [
+        "patient", "clinical", "medical", "health", "doctor",
+        "hospital", "ehr", "diagnostic",
+    ],
+    "enterprise-saas": [
+        "workflow", "enterprise", "analytics", "dashboard",
+        "compliance", "automation", "platform",
+    ],
+    "smb-saas": [
+        "small business", "freelancer", "solo", "micro",
+    ],
+    "marketplace": [
+        "marketplace", "buyer", "seller", "listing", "transaction",
+    ],
+    "ecommerce": [
+        "shop", "store", "product", "order", "cart", "inventory",
+    ],
+    "consumer-app": [
+        "social", "chat", "message", "friend", "community",
+    ],
+    "developer-tools": [
+        "api", "sdk", "developer", "code", "deploy", "pipeline",
+    ],
+    "cleantech": [
+        "energy", "solar", "battery", "carbon", "emission",
+        "renewable", "grid", "sustainable",
+    ],
+    "biotech": [
+        "drug", "protein", "genomic", "clinical trial", "lab",
+    ],
+    "edtech": [
+        "course", "student", "teacher", "learning", "classroom",
+    ],
+    "insurtech": [
+        "insurance", "policy", "claim", "underwriting",
+    ],
+    "proptech": [
+        "property", "real estate", "rental", "tenant", "lease",
+    ],
+    "agtech": [
+        "farm", "crop", "agriculture", "soil", "harvest",
+    ],
+    "hardware": [
+        "device", "sensor", "hardware", "physical", "iot",
+    ],
+}
