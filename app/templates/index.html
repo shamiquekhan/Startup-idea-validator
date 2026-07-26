@@ -47,9 +47,9 @@
   .report p { margin: 0.5rem 0; }
   .report ul { margin: 0.5rem 0 0.5rem 1.5rem; }
   .report a { color: #2563eb; }
-  .report table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; }
-  .report th, .report td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
-  .report th { background: #f9fafb; }
+  .report table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; font-size: 0.9rem; }
+  .report th, .report td { border: 1px solid #ddd; padding: 0.5rem 0.6rem; text-align: left; }
+  .report th { background: #f3f4f6; font-weight: 600; }
   .score-badge {
     display: inline-block; font-size: 2.5rem; font-weight: 700; padding: 0.5rem 1.5rem;
     border-radius: 12px; margin: 1rem 0;
@@ -149,7 +149,8 @@ async function validate() {
       html += `<div class="stripped-note">⚠ ${data.unresolved_claims_stripped} unsupported claim(s) were removed by the validator.</div>`;
     }
 
-    html += '<hr>' + mdToHtml(data.markdown);
+    let bodyMd = data.markdown.replace(/^# Startup Validation Report[\s\S]*?^---\n/m, '');
+    html += '<hr>' + mdToHtml(bodyMd);
     html += '<br><button onclick="resetForm()" class="new-btn">Run Another Idea</button>';
     report.innerHTML = html;
     report.classList.add('show');
@@ -162,25 +163,82 @@ async function validate() {
 }
 
 function mdToHtml(md) {
-  let html = md
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/^(\*|-) (.+)$/gm, '<li>$2</li>')
-    .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    .replace(/^---$/gm, '<hr>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\|(.+)\|/g, function(m) { return m; })
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>');
-  html = '<p>' + html + '</p>';
+  let lines = md.split('\n');
+  let html = '';
+  let inTable = false;
+  let inList = false;
+
+  let tableRow = 0;
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    let trimmed = line.trim();
+
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      if (!inTable) {
+        html += '<table>';
+        inTable = true;
+        tableRow = 0;
+      }
+      let cells = trimmed.split('|').filter(c => c.trim() !== '');
+      if (cells.every(c => /^:?-+:?$/.test(c.trim()))) continue;
+      let cellTag = tableRow === 0 ? 'th' : 'td';
+      html += '<tr>';
+      for (let cell of cells) {
+        let content = inlineMd(cell.trim());
+        html += '<' + cellTag + '>' + content + '</' + cellTag + '>';
+      }
+      html += '</tr>';
+      tableRow++;
+      continue;
+    } else {
+      if (inTable) { html += '</table>'; inTable = false; }
+    }
+
+    if (/^#{1,3}\s/.test(trimmed)) {
+      let level = trimmed.match(/^#+/)[0].length;
+      let text = inlineMd(trimmed.replace(/^#+\s/, ''));
+      let tag = 'h' + level;
+      html += '<' + tag + '>' + text + '</' + tag + '>';
+      continue;
+    }
+
+    let ulMatch = trimmed.match(/^[-*]\s+(.+)/);
+    let olMatch = trimmed.match(/^\d+\.\s+(.+)/);
+    if (ulMatch || olMatch) {
+      let content = inlineMd((ulMatch || olMatch)[1]);
+      if (!inList) { html += '<ul>'; inList = 'ul'; }
+      html += '<li>' + content + '</li>';
+      continue;
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+    }
+
+    if (/^---+$/.test(trimmed)) {
+      html += '<hr>';
+      continue;
+    }
+
+    if (trimmed === '') {
+      html += '<p></p>';
+      continue;
+    }
+
+    html += '<p>' + inlineMd(trimmed) + '</p>';
+  }
+
+  if (inTable) html += '</table>';
+  if (inList) html += '</ul>';
   html = html.replace(/<p><\/p>/g, '');
-  html = html.replace(/<li>/g, '<ul><li>').replace(/<\/li>(?![\s\S]*?<\/li>)/g, '</li></ul>');
-  html = html.replace(/<\/ul>\s*<ul>/g, '');
-  html = html.replace(/<p>\|/g, '<table><tr><td>').replace(/\|<\/p>/g, '</td></tr></table>');
+  html = html.replace(/<\/p>\s*<p>/g, '</p><p>');
   return html;
+}
+
+function inlineMd(text) {
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
 }
 
 function resetForm() {
