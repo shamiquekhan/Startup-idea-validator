@@ -12,7 +12,7 @@ from app.schemas import (
 
 _EVALUATOR_PROMPT = """You are a veteran startup evaluator and angel investor. Evaluate this startup idea rigorously across the dimensions below.
 
-Return ONLY valid JSON. Be critical — it's better to flag risks than to be optimistic.
+Return ONLY valid JSON. Use the full score range (0-100) — not all ideas are average. A clear B2B SaaS with strong demand should score 70-85. A weak or missing-information idea should score 20-40.
 
 Context:
 - Problem: {problem}
@@ -26,16 +26,26 @@ Context:
 - Missing from input: {missing_fields}
 - Input quality: {input_quality}
 
-CRITICAL RULES:
-1. Vary scores across dimensions based on available evidence — do NOT default to 50 for all.
-2. If customer, problem, or solution are missing from input, set customer_clarity, problem_pain, or solution_fit to 20-40 with low confidence. State "not specified" — do NOT invent or guess a customer segment.
-3. Never fabricate customer details. If the target user is "not specified" or "unknown", customer_clarity must be ≤30 and the explanation must say "Customer not specified — cannot evaluate".
-4. The overall_score must reflect the weighted sum. If many dimensions are low-confidence and below 50, the overall score should be below 60.
-5. Do NOT recommend "build" if fundamental info (customer, problem) is missing.
-6. For deep-tech/cleantech categories, be especially critical of: experimental validation costs, long sales cycles, regulatory hurdles, and capital requirements.
+SCORING GUIDELINES:
+- problem_pain: If clear urgent problem + strong demand → 70-90. Vague problem → 20-40.
+- customer_clarity: If specific target customer named → 70-90. "Not specified" → 20-30.
+- solution_fit: If solution directly solves the problem → 65-85. Unclear → 30-50.
+- competitive_position: Few competitors + clear differentiation → 65-80. Crowded → 30-50.
+- technical_feasibility: Standard software/AI → 65-85. Hardware/deep-tech → 40-60.
+- business_model: Clear revenue model (SaaS, marketplace) → 60-80. Unknown → 20-40.
+- adoption_barriers: Low barriers (B2B SaaS) → 60-80. High (hardware, regulated) → 30-50.
+- team_requirements: Standard dev team → 60-75. Specialized expertise → 40-60.
+
+RULES:
+1. Vary scores across the full range. Do NOT default to 50 for everything.
+2. If customer/problem/solution are missing from input, score that dimension 20-40 with low confidence. Never fabricate details.
+3. overall_score should reflect the weighted sum of dimension scores.
+4. "build" requires: customer is specific, problem is clear, solution is feasible, and at least 4 dimensions score 60+. For strong SaaS ideas with clear customer, problem, and solution — recommend "build".
+5. "narrow" = promising but needs focus (good problem, but crowded market, or unclear differentiation).
+6. For deep-tech/cleantech, flag experimental validation costs, long sales cycles, and capital requirements.
 
 You MUST return JSON in this EXACT format (use the exact key names shown):
-{{
+{{{{
   "dimensions": [
     {{"name": "problem_pain", "score": 0-100, "weight": 0.0-1.0, "explanation": "2-3 sentences", "confidence": "low/medium/high"}},
     {{"name": "customer_clarity", "score": 0-100, "weight": 0.0-1.0, "explanation": "2-3 sentences", "confidence": "low/medium/high"}},
@@ -167,32 +177,25 @@ def _parse_evaluation(data: dict, startup_type: StartupType, input_quality: str 
 def _enforce_score_verdict_consistency(
     overall: int, verdict: str, dimensions: list[EvaluationDimension]
 ) -> int:
-    dim_map = {d.name: d.score for d in dimensions}
-    customer = dim_map.get("customer_clarity", 50)
-    business = dim_map.get("business_model", 50)
-    competition = dim_map.get("competitive_position", 50)
     low_conf_count = sum(1 for d in dimensions if d.confidence == "low")
 
-    if verdict == "build" and (customer < 30 or business < 30):
-        return min(overall, 60)
+    if verdict == "build" and overall < 50:
+        return max(overall, 55)
 
-    if verdict == "build" and low_conf_count >= 4:
+    if verdict == "narrow" and overall > 80:
+        return 78
+
+    if verdict == "abandon" and overall > 55:
+        return min(overall, 50)
+
+    if verdict == "insufficient-info" and overall > 55:
+        return min(overall, 50)
+
+    if overall >= 70 and verdict in ("pivot", "abandon", "insufficient-info"):
         return min(overall, 55)
 
-    if verdict == "narrow" and overall > 70:
-        return min(overall, 65)
-
-    if verdict == "abandon" and overall > 50:
-        return min(overall, 45)
-
-    if verdict == "insufficient-info" and overall > 50:
-        return min(overall, 45)
-
-    if overall >= 65 and verdict in ("pivot", "abandon", "insufficient-info"):
-        return min(overall, 55)
-
-    if overall < 40 and verdict in ("build",):
-        return 45
+    if overall < 35 and verdict in ("build", "narrow"):
+        return max(overall, 40)
 
     return overall
 

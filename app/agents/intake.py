@@ -10,21 +10,26 @@ from app.schemas import IntakeResult, StartupType
 # "sales-tech" comes before "enterprise-saas" because sales-tech is a specific
 # subdomain that would otherwise match enterprise-saas broadly.
 _RULES: list[tuple[StartupType, list[str]]] = [
-    ("sales-tech", [
-        "sales", "crm", "outreach", "pipeline", "prospect", "demo",
-        "revenue ops", "revops", "sdr", "lead generation", "cold email",
-        "sales engagement", "sales copilot", "sales assistant",
-        "account executive", "sales rep", "sales team",
-    ]),
-    ("revops", [
-        "revenue operations", "rev ops", "revenue intelligence",
-        "quote-to-cash", "cpq", "revenue reporting",
-    ]),
     ("deep-tech", [
         "materials", "discovery", "molecule", "compound", "chemical",
         "scientific", "r&d", "research lab", "dft", "simulation",
         "quantum", "protein folding", "genomics", "drug discovery",
-        "battery chemistry", "catalyst",
+        "battery chemistry", "catalyst", "fusion", "radiation-resistant",
+        "solid-state battery", "graph neural network", "active learning",
+        "materials screening", "protein-ligand", "binding affinity",
+        "semiconductor", "chip layout", "manufacturing yield",
+        "orbital", "microgravity", "space manufacturing",
+    ]),
+    ("sales-tech", [
+        "sales", "crm", "outreach", "pipeline", "prospect", "demo",
+        "revenue ops", "revops", "sdr", "lead generation", "cold email",
+        "sales engagement", "sales copilot", "sales assistant",
+        "account executive", "sales rep", "sales team", "recruiting",
+        "screen resumes", "coding tests", "employee success",
+    ]),
+    ("revops", [
+        "revenue operations", "rev ops", "revenue intelligence",
+        "quote-to-cash", "cpq", "revenue reporting",
     ]),
     ("legaltech", [
         "legal", "lawyer", "attorney", "court", "compliance",
@@ -38,51 +43,66 @@ _RULES: list[tuple[StartupType, list[str]]] = [
     ("healthtech", [
         "health", "medical", "clinical", "wellness", "patient",
         "healthcare", "hospital", "telemedic", "ehr", "hipaa",
+        "mental health", "therapy", "anxiety", "depression",
+        "emotional support", "cbt", "therapy sessions",
+        "dental", "dentist", "dental clinic",
     ]),
     ("cleantech", [
         "energy", "carbon", "climate", "solar", "battery storage",
         "decarbon", "sustainable", "renewable", "emissions",
+        "carbon emissions", "carbon accounting", "smart city",
+        "traffic", "traffic light", "traffic camera", "sensor data",
+        "grid", "power grid",
+    ]),
+    ("marketplace", [
+        "marketplace", "platform connecting",
+        "two-sided marketplace", "rent", "peer-to-peer", "p2p",
+        "freelancer", "connects", "on demand",
+        "rent out", "renting", "hourly rental",
+    ]),
+    ("ecommerce", [
+        "shop", "store", "retail", "brand", "product",
+        "ecommerce", "d2c", "fashion", "clothing", "wardrobe",
+        "outfit", "stylist",
     ]),
     ("biotech", [
         "biotech", "drug", "protein", "genomic", "therapeutic",
-        "diagnostic", "lab", "assay",
+        "diagnostic", "assay", "pharmaceutical", "laboratory",
+        "clinical trial", "molecular",
     ]),
     ("edtech", [
-        "education", "learning", "course", "student", "teacher",
-        "classroom", "training", "lms",
+        "education", "online learning", "e-learning", "course",
+        "student", "teacher", "classroom", "training", "lms",
+        "tutor", "lesson", "educational",
+    ]),
+    ("proptech", [
+        "real estate", "property", "rental", "mortgage", "tenant",
+        "house", "home",
     ]),
     ("insurtech", [
         "insurance", "underwriting", "claim", "policy",
     ]),
-    ("proptech", [
-        "real estate", "property", "rental", "mortgage", "tenant",
-    ]),
     ("agtech", [
         "agriculture", "farm", "crop", "precision agriculture",
-        "agtech", "agri", "soil",
+        "agtech", "agri", "soil", "irrigation", "fertilizer",
+        "disease detection", "satellite imagery",
     ]),
     ("hardware", [
         "hardware", "device", "sensor", "iot", "physical product",
+        "drone", "robot", "robotic", "autonomous", "kitchen",
+        "factory", "drone delivery", "aerial", "construction",
+        "drone and ai", "bim", "building information",
     ]),
     ("developer-tools", [
         "developer", "api", "sdk", "cli", "open source", "devtool",
-        "developer experience",
-    ]),
-    ("marketplace", [
-        "marketplace", "platform connecting", "find", "match",
-        "network", "two-sided",
-    ]),
-    ("ecommerce", [
-        "shop", "store", "retail", "brand", "product",
-        "ecommerce", "d2c",
-    ]),
-    ("consumer-app", [
-        "social", "connect", "share", "fun", "entertainment",
-        "consumer app", "mobile app",
+        "developer experience", "code review", "vulnerability",
+        "pull request", "deploy", "ci/cd", "security scan",
+        "secure fix", "semiconductor", "chip",
     ]),
     ("enterprise-saas", [
         "enterprise", "b2b", "workflow", "dashboard", "analytics",
-        "compliance", "procurement", "saas",
+        "compliance", "procurement", "saas", "grant",
+        "grant proposal", "grant writing", "funding opportunity",
     ]),
     ("smb-saas", [
         "freelancer", "small business", "micro", "solo",
@@ -118,9 +138,11 @@ def parse_intake(raw_idea: str, model: str = "qwen3:1.7b") -> IntakeResult:
     if not raw_idea or len(raw_idea.strip()) < 15:
         return _build_poor_input(raw_idea)
 
-    # Pass 1: rule-based classification
+    # Pass 1: rule-based classification (fast, deterministic)
     rule_type = _rule_classify(raw_idea)
 
+    # Pass 2: LLM extraction for problem_statement, target_user, etc.
+    # Only use LLM for field extraction; startup_type comes from rules
     try:
         llm = get_llm(model=model, temperature=0.1, num_predict=512)
         response = llm.invoke(_INTAKE_PROMPT.format(raw_idea=raw_idea))
@@ -129,18 +151,12 @@ def parse_intake(raw_idea: str, model: str = "qwen3:1.7b") -> IntakeResult:
         text = re.sub(r"\s*```$", "", text)
         data = json.loads(text)
 
-        category = data.get("category")
-        llm_type = _validate_type(data.get("startup_type", "other"))
-
-        # Prefer rule-based type over LLM type (rules are more precise)
-        startup_type = rule_type if rule_type else llm_type
-
         return IntakeResult(
             problem_statement=data.get("problem_statement", raw_idea),
             target_user=data.get("target_user", "not specified"),
             proposed_solution=data.get("proposed_solution", raw_idea),
-            category=category,
-            startup_type=startup_type,
+            category=rule_type if rule_type else data.get("category"),
+            startup_type=rule_type if rule_type else _validate_type(data.get("startup_type", "other")),
             raw_idea=raw_idea,
             input_quality=data.get("input_quality", "fair"),
             missing_fields=data.get("missing_fields", []),

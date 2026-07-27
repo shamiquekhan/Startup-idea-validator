@@ -179,6 +179,10 @@ async def run_pipeline(raw_idea: str) -> PipelineState:
         report_data = cached.get("report")
         if report_data:
             return _state_from_cache(cached)
+
+    # Clear stale cache to force fresh run
+    save_cache(raw_idea, {"raw_idea": raw_idea, "markdown": "", "error": None, "report": None})
+
     graph = build_pipeline()
     initial = PipelineState(
         raw_idea=raw_idea,
@@ -195,9 +199,28 @@ async def run_pipeline(raw_idea: str) -> PipelineState:
         unresolved_claims_stripped=0,
         error=None,
     )
-    result = await graph.ainvoke(initial)
-    save_cache(raw_idea, _state_to_cache(result))
-    return result
+    try:
+        result = await asyncio.wait_for(graph.ainvoke(initial), timeout=250)
+        save_cache(raw_idea, _state_to_cache(result))
+        return result
+    except asyncio.TimeoutError:
+        return PipelineState(
+            raw_idea=raw_idea,
+            intake=None,
+            completeness=None,
+            demand=None,
+            competitors=None,
+            market_sizing=None,
+            risks=None,
+            viability=None,
+            evaluation=None,
+            decision_support=None,
+            business_plan_draft=None,
+            report=None,
+            error="Pipeline timed out after 250 seconds. Try a simpler or more specific idea.",
+            markdown="# Pipeline Timeout\n\nThe validation pipeline timed out. This can happen with very complex ideas combined with slow LLM inference. Try simplifying your idea description or providing more specific customer and solution details.",
+            unresolved_claims_stripped=0,
+        )
 
 
 def _state_to_cache(state: PipelineState) -> dict:
